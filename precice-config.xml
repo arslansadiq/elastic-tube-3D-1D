@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<precice-configuration>
+  <log>
+    <sink
+      filter="%Severity% > debug and %Rank% = 0"
+      format="---[precice] %ColorizedSeverity% %Message%"
+      enabled="true" />
+  </log>
+
+  <solver-interface dimensions="3">
+    <data:vector name="Force" />
+    <data:vector name="DisplacementDelta" />
+    <data:vector name="Velocity" />
+
+    <mesh name="Fluid-Mesh-Nodes">
+      <use-data name="DisplacementDelta" />
+    </mesh>
+
+    <mesh name="Fluid-Mesh-Faces">
+      <use-data name="Force" />
+    </mesh>
+
+    <mesh name="Calculix_Mesh">
+      <use-data name="DisplacementDelta" />
+      <use-data name="Force" />
+    </mesh>
+
+    <mesh name="MonolithicTube1DInlet-Mesh">
+      <use-data name="Velocity" />
+    </mesh>
+
+    <mesh name="FluidOutlet-Mesh">
+      <use-data name="Velocity" />
+    </mesh>
+
+    <participant name="Fluid">
+      <use-mesh name="Calculix_Mesh" from="Calculix" safety-factor="1.5" />
+      <use-mesh name="Fluid-Mesh-Nodes" provide="yes" />
+      <use-mesh name="Fluid-Mesh-Faces" provide="yes" />
+      <use-mesh name="FluidOutlet-Mesh" provide="yes" />
+      <write-data name="Force" mesh="Fluid-Mesh-Faces" />
+      <write-data name="Velocity" mesh="FluidOutlet-Mesh" />
+      <read-data name="DisplacementDelta" mesh="Fluid-Mesh-Nodes" />
+      <mapping:nearest-projection
+        direction="write"
+        from="Fluid-Mesh-Faces"
+        to="Calculix_Mesh"
+        constraint="conservative"
+        timing="initial" />
+      <mapping:nearest-projection
+        direction="read"
+        from="Calculix_Mesh"
+        to="Fluid-Mesh-Nodes"
+        constraint="consistent"
+        timing="initial" />
+    </participant>
+
+    <participant name="MonolithicTube1D">
+      <use-mesh name="MonolithicTube1DInlet-Mesh" provide="yes" />
+      <use-mesh name="FluidOutlet-Mesh" from="Fluid" />
+      <read-data name="Velocity" mesh="MonolithicTube1DInlet-Mesh" />
+      <mapping:nearest-neighbor
+        direction="read"
+        from="FluidOutlet-Mesh"
+        to="MonolithicTube1DInlet-Mesh"
+        constraint="consistent" />
+    </participant>
+
+    <participant name="Calculix">
+      <use-mesh name="Calculix_Mesh" provide="yes" />
+      <use-mesh name="Fluid-Mesh-Faces" from="Fluid" />
+      <write-data name="DisplacementDelta" mesh="Calculix_Mesh" />
+      <read-data name="Force" mesh="Calculix_Mesh" />
+    </participant>
+
+    <m2n:sockets from="Fluid" to="Calculix" exchange-directory=".." />
+
+    <coupling-scheme:serial-implicit>
+      <participants first="Fluid" second="Calculix" />
+      <max-time-windows value="200" />
+      <time-window-size value="1e-4" />
+      <exchange data="Force" mesh="Calculix_Mesh" from="Fluid" to="Calculix" />
+      <exchange data="DisplacementDelta" mesh="Calculix_Mesh" from="Calculix" to="Fluid" />
+      <max-iterations value="30" />
+      <relative-convergence-measure limit="1e-3" data="DisplacementDelta" mesh="Calculix_Mesh" />
+      <relative-convergence-measure limit="1e-3" data="Force" mesh="Calculix_Mesh" />
+      <acceleration:IQN-IMVJ>
+        <data name="DisplacementDelta" mesh="Calculix_Mesh" />
+        <preconditioner type="residual-sum" />
+        <initial-relaxation value="0.1" />
+        <max-used-iterations value="10" />
+        <time-windows-reused value="1" />
+      </acceleration:IQN-IMVJ>
+    </coupling-scheme:serial-implicit>
+
+    <m2n:sockets from="Fluid" to="MonolithicTube1D" exchange-directory=".." />
+    
+    <coupling-scheme:serial-explicit>
+      <participants first="Fluid" second="MonolithicTube1D" />
+      <max-time-windows value="200" />
+      <time-window-size value="1e-4" />
+      <exchange data="Velocity" mesh="FluidOutlet-Mesh" from="Fluid" to="MonolithicTube1D" />
+    </coupling-scheme:serial-explicit>
+  </solver-interface>
+</precice-configuration>
